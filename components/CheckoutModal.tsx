@@ -3,10 +3,10 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Account, CoinPackage, ProductType } from '@/types';
-import { createOrder, getStoreSettings } from '@/lib/store';
+import { createOrder, getStoreSettings, getCurrentCustomer } from '@/lib/store';
 import { 
   X, CheckCircle2, Copy, Check, UploadCloud, AlertCircle, 
-  Gamepad2, Coins, ArrowRight, ShieldCheck, MessageCircle 
+  Gamepad2, Coins, ArrowRight, ShieldCheck, MessageCircle, Lock, KeyRound 
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -34,6 +34,7 @@ export default function CheckoutModal({
   const [paymentSenderNumber, setPaymentSenderNumber] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [accountUid, setAccountUid] = useState('');
   const [proofImage, setProofImage] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
@@ -50,9 +51,15 @@ export default function CheckoutModal({
       const set = await getStoreSettings();
       if (set.evcNumber) setEvcNumber(set.evcNumber);
       if (set.evcMerchantName) setMagacaNumberka(set.evcMerchantName);
+
+      const loggedCustomer = getCurrentCustomer();
+      if (loggedCustomer) {
+        setEmail(loggedCustomer.email);
+        if (loggedCustomer.phone) setWhatsapp(loggedCustomer.phone);
+      }
     }
     loadSettings();
-  }, []);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -71,6 +78,11 @@ export default function CheckoutModal({
 
     if (!whatsapp.trim() && !email.trim()) {
       setErrorMsg('Fadlan geli ugu yaraan hal hab xiriir: WhatsApp ama Email.');
+      return;
+    }
+
+    if (email.trim() && !password.trim()) {
+      setErrorMsg('Fadlan geli password si laguugu furo account dukaanka ah.');
       return;
     }
 
@@ -126,6 +138,7 @@ export default function CheckoutModal({
         amount: price,
         customerPhone: whatsapp.trim() || undefined,
         customerEmail: email.trim() || undefined,
+        customerPassword: password.trim() || undefined,
         paymentSenderNumber: paymentSenderNumber.trim(),
         accountUid: productType === 'COINS' ? accountUid.trim() : undefined,
         paymentProofUrl: proofImage,
@@ -154,6 +167,7 @@ export default function CheckoutModal({
     setPaymentSenderNumber('');
     setWhatsapp('');
     setEmail('');
+    setPassword('');
     setAccountUid('');
     setProofImage(null);
     setErrorMsg('');
@@ -162,34 +176,37 @@ export default function CheckoutModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
-      <div className="relative w-full max-w-lg bg-[#0d121c] border border-slate-800 rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
+      <div className="relative w-full max-w-lg bg-[#0c101a] border border-slate-800/90 rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
         
+        {/* Top Glowing Header Accent */}
+        <div className="h-1 w-full bg-gradient-to-r from-cyan-500 via-teal-400 to-emerald-500" />
+
         {/* Header Bar */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800/80 bg-slate-900/50">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-slate-800/80 bg-[#0f1422]/90">
+          <div className="flex items-center gap-2.5">
             {productType === 'ACCOUNT' ? (
-              <div className="w-8 h-8 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center">
-                <Gamepad2 className="w-4 h-4" />
+              <div className="w-9 h-9 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center border border-cyan-500/30 shadow-md shadow-cyan-500/10">
+                <Gamepad2 className="w-5 h-5" />
               </div>
             ) : (
-              <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center">
-                <Coins className="w-4 h-4" />
+              <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30 shadow-md shadow-amber-500/10">
+                <Coins className="w-5 h-5" />
               </div>
             )}
             <div>
-              <h2 className="font-black text-white text-base sm:text-lg">
-                {step === 3 ? 'Dalabka Waa La Xaqiijiyey' : productType === 'ACCOUNT' ? 'Iibso Account-kan' : 'Iibso Coins eFootball'}
+              <h2 className="font-black text-white text-base sm:text-lg tracking-tight">
+                {step === 3 ? 'Dalabka Waa La Xaqiijiyey 🎉' : productType === 'ACCOUNT' ? 'Iibso Account-kan' : 'Iibso Coins eFootball'}
               </h2>
               <p className="text-[11px] text-slate-400">
-                {step === 1 ? 'Tallaabada 1: Xogtaada & Xiriirka' : step === 2 ? 'Tallaabada 2: Bixi Lacagta & Soo Geli Rasiidka' : 'Waa La Helay 🎉'}
+                {step === 1 ? 'Tallaabada 1: Xogtaada & Account-ka' : step === 2 ? 'Tallaabada 2: Bixi Lacagta & Soo Geli Rasiidka' : 'Dhameystir'}
               </p>
             </div>
           </div>
 
           <button
             onClick={handleResetAndClose}
-            className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+            className="w-8 h-8 rounded-full bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer border border-slate-800"
           >
             <X className="w-4 h-4" />
           </button>
@@ -197,17 +214,17 @@ export default function CheckoutModal({
 
         {/* Selected Product Summary Card */}
         {step !== 3 && (
-          <div className="bg-[#121826] px-5 py-3.5 border-b border-slate-800 flex items-center justify-between gap-3">
+          <div className="bg-[#121827] px-5 sm:px-6 py-3.5 border-b border-slate-800/80 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 truncate">
               {productType === 'ACCOUNT' && account?.images?.[0] && (
                 <img
                   src={account.images[0]}
                   alt="Product"
-                  className="w-12 h-12 rounded-lg object-cover border border-slate-700 shrink-0"
+                  className="w-12 h-12 rounded-xl object-cover border border-slate-700 shrink-0 shadow-md"
                 />
               )}
               {productType === 'COINS' && (
-                <div className="w-12 h-12 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0">
+                <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0 shadow-md">
                   <Coins className="w-6 h-6 text-amber-400" />
                 </div>
               )}
@@ -231,7 +248,7 @@ export default function CheckoutModal({
         {/* Modal Body */}
         <div className="p-5 sm:p-6">
           {errorMsg && (
-            <div className="mb-4 p-3 bg-red-950/80 border border-red-800/80 rounded-xl text-xs text-red-200 flex items-center gap-2">
+            <div className="mb-4 p-3.5 bg-red-950/80 border border-red-800 rounded-xl text-xs text-red-200 flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
               <span>{errorMsg}</span>
             </div>
@@ -249,7 +266,7 @@ export default function CheckoutModal({
                   placeholder="Tusaale: 061XXXXXXX (Lambarka lacagtu ka bixi doonto)"
                   value={paymentSenderNumber}
                   onChange={(e) => setPaymentSenderNumber(e.target.value)}
-                  className="w-full bg-slate-900/90 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 font-mono"
+                  className="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 font-mono shadow-inner"
                   required
                 />
               </div>
@@ -264,7 +281,7 @@ export default function CheckoutModal({
                     placeholder="Geli UID-gaaga ama Konami ID-gaaga (si coins-ka loogu shubo)"
                     value={accountUid}
                     onChange={(e) => setAccountUid(e.target.value)}
-                    className="w-full bg-slate-900/90 border border-amber-500/50 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 font-mono"
+                    className="w-full bg-slate-900/90 border border-amber-500/50 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 font-mono shadow-inner"
                     required
                   />
                   <p className="text-[11px] text-slate-400 mt-1">
@@ -273,32 +290,59 @@ export default function CheckoutModal({
                 </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                    Lambarka WhatsApp
-                  </label>
-                  <input
-                    type="tel"
-                    placeholder="Tusaale: +252 61XXXXXXX"
-                    value={whatsapp}
-                    onChange={(e) => setWhatsapp(e.target.value)}
-                    className="w-full bg-slate-900/90 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-mono"
-                  />
+              {/* Email & Password Registration Container */}
+              <div className="bg-[#101726] border border-cyan-500/30 rounded-2xl p-3.5 sm:p-4 space-y-3">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-cyan-300">
+                  <KeyRound className="w-4 h-4 text-cyan-400" />
+                  <span>Account-ka Dukaanka (Si aad ula socoto dalabyadaada)</span>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                    Email Address
-                  </label>
-                  <input
-                    type="email"
-                    placeholder="magacaaga@gmail.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-slate-900/90 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                      Email Address <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="magacaaga@gmail.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                      Password Cusub <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="password"
+                      placeholder="Geli Password aad xusuusan karto"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                      required
+                    />
+                  </div>
                 </div>
+
+                <p className="text-[10px] text-slate-400">
+                  🔐 Waxaa si toos ah laguugu furayaa account aad mar kasta ku arki karto dalabyadaadii hore.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Lambarka WhatsApp (Halka xogta laguugu soo diri doono)
+                </label>
+                <input
+                  type="tel"
+                  placeholder="Tusaale: +252 61XXXXXXX"
+                  value={whatsapp}
+                  onChange={(e) => setWhatsapp(e.target.value)}
+                  className="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-mono"
+                />
               </div>
 
               {/* Delivery Note */}
@@ -312,7 +356,7 @@ export default function CheckoutModal({
               {/* Action Button */}
               <button
                 type="submit"
-                className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-black text-xs sm:text-sm uppercase tracking-wider shadow-lg shadow-cyan-500/25 hover:scale-[1.01] active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
+                className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-cyan-400 via-teal-300 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 text-black font-black text-xs sm:text-sm uppercase tracking-wider shadow-lg shadow-cyan-500/25 hover:scale-[1.01] active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
               >
                 <span>U GUDBI LACAG-BIXINTA (${price})</span>
                 <ArrowRight className="w-4 h-4" />
@@ -324,7 +368,7 @@ export default function CheckoutModal({
           {step === 2 && (
             <div className="space-y-4">
               {/* Payment instructions box */}
-              <div className="bg-[#151c2b] border border-cyan-500/40 rounded-2xl p-4 sm:p-5 text-center">
+              <div className="bg-[#131b2c] border border-cyan-500/50 rounded-2xl p-4 sm:p-5 text-center shadow-lg">
                 <span className="text-xs font-bold text-cyan-300 uppercase tracking-wider block mb-1">
                   Tallaabada 1: Dir Lacagta EVC Plus
                 </span>
@@ -333,19 +377,19 @@ export default function CheckoutModal({
                 </div>
 
                 {/* EVC Number with 1-click Copy */}
-                <div className="flex items-center justify-center gap-2 bg-black/60 border border-slate-700 rounded-xl p-2.5 max-w-sm mx-auto">
+                <div className="flex items-center justify-center gap-2 bg-black/70 border border-slate-700 rounded-xl p-2.5 max-w-sm mx-auto shadow-inner">
                   <span className="font-mono font-bold text-base sm:text-lg text-emerald-400 tracking-wider">
                     {evcNumber}
                   </span>
                   <button
                     onClick={handleCopy}
-                    className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-400 text-black px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer"
+                    className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-400 text-black px-3.5 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer shadow-md"
                   >
                     {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                     <span>{copied ? 'WAA LA KOOBIYEEYAY!' : 'KOOBIYEE'}</span>
                   </button>
                 </div>
-                <span className="text-xs text-slate-300 mt-2.5 block bg-slate-900/80 py-1.5 px-3 rounded-lg border border-slate-800">
+                <span className="text-xs text-slate-300 mt-2.5 block bg-slate-900/90 py-1.5 px-3 rounded-lg border border-slate-800 font-medium">
                   Magaca Numberka: <strong className="text-emerald-400 font-bold">{magacaNumberka}</strong>
                 </span>
               </div>
@@ -357,12 +401,12 @@ export default function CheckoutModal({
                 </label>
 
                 {proofImage ? (
-                  <div className="relative rounded-xl border border-emerald-500/50 bg-slate-900 p-2 flex items-center justify-between">
+                  <div className="relative rounded-2xl border border-emerald-500/50 bg-slate-900 p-2.5 flex items-center justify-between shadow-lg">
                     <div className="flex items-center gap-3">
                       <img
                         src={proofImage}
                         alt="Payment Proof"
-                        className="w-14 h-14 object-cover rounded-lg border border-slate-700"
+                        className="w-14 h-14 object-cover rounded-xl border border-slate-700 shadow-md"
                       />
                       <div>
                         <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
@@ -373,20 +417,20 @@ export default function CheckoutModal({
                     </div>
                     <button
                       onClick={() => setProofImage(null)}
-                      className="text-xs text-red-400 hover:text-red-300 underline mr-2 cursor-pointer"
+                      className="text-xs text-red-400 hover:text-red-300 underline mr-2 cursor-pointer font-bold"
                     >
                       Beddel
                     </button>
                   </div>
                 ) : (
-                  <label className="border-2 border-dashed border-slate-700 hover:border-cyan-400 rounded-2xl p-5 flex flex-col items-center justify-center cursor-pointer bg-slate-900/60 hover:bg-slate-900 transition-all text-center group">
+                  <label className="border-2 border-dashed border-slate-700 hover:border-cyan-400 rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer bg-slate-900/60 hover:bg-slate-900 transition-all text-center group shadow-inner">
                     <input
                       type="file"
                       accept="image/*"
                       onChange={handleFileChange}
                       className="hidden"
                     />
-                    <UploadCloud className="w-8 h-8 text-cyan-400 group-hover:scale-110 transition-transform mb-2" />
+                    <UploadCloud className="w-9 h-9 text-cyan-400 group-hover:scale-110 transition-transform mb-2" />
                     <span className="text-xs font-bold text-white mb-0.5">
                       [ SOO GELI SAWIRKA RASIIDKA ]
                     </span>
@@ -402,7 +446,7 @@ export default function CheckoutModal({
                 <button
                   type="button"
                   onClick={() => setStep(1)}
-                  className="px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 transition-colors cursor-pointer"
+                  className="px-4 py-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 transition-colors cursor-pointer"
                 >
                   Dib u noqo
                 </button>
@@ -432,12 +476,12 @@ export default function CheckoutModal({
               <div>
                 <h3 className="text-2xl font-black text-white">Dalabkaagii Waa La Helay! 🎉</h3>
                 <p className="text-xs text-slate-300 max-w-sm mx-auto mt-1 leading-relaxed">
-                  Lacag-bixintaadii waxaa hadda xaqiijinaya maamulka. Marka la hubiyo, xogtaada waxaa laguugu soo diri doonaa WhatsApp ama Email.
+                  Lacag-bixintaadii waxaa hadda xaqiijinaya maamulka. Waxaa laguugu furay account aad ku maamusho dalabyadaada.
                 </p>
               </div>
 
               {/* Order Number Box */}
-              <div className="bg-[#151c2b] border border-cyan-500/50 rounded-2xl p-4 max-w-xs mx-auto">
+              <div className="bg-[#151c2b] border border-cyan-500/50 rounded-2xl p-4 max-w-xs mx-auto shadow-xl">
                 <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
                   Lambarkaaga Dalabka
                 </span>

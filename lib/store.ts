@@ -1,12 +1,14 @@
-import { Account, CoinPackage, Order, StoreSettings, OrderStatus, OrderEvent } from '@/types';
+import { Account, CoinPackage, Order, StoreSettings, OrderStatus, OrderEvent, CustomerUser } from '@/types';
 import { INITIAL_ACCOUNTS, INITIAL_COIN_PACKAGES, INITIAL_ORDERS, INITIAL_SETTINGS } from './seedData';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 
 const STORAGE_KEYS = {
-  ACCOUNTS: 'efootball_accounts_v2',
-  COINS: 'efootball_coins_v2',
-  ORDERS: 'efootball_orders_v2',
-  SETTINGS: 'efootball_settings_v2',
+  ACCOUNTS: 'efootball_accounts_v3',
+  COINS: 'efootball_coins_v3',
+  ORDERS: 'efootball_orders_v3',
+  SETTINGS: 'efootball_settings_v3',
+  CUSTOMERS: 'efootball_customers_v3',
+  CURRENT_USER: 'efootball_current_user_v3',
 };
 
 // In-memory fallback for SSR
@@ -14,6 +16,8 @@ let memoryAccounts = [...INITIAL_ACCOUNTS];
 let memoryCoins = [...INITIAL_COIN_PACKAGES];
 let memoryOrders = [...INITIAL_ORDERS];
 let memorySettings = { ...INITIAL_SETTINGS };
+let memoryCustomers: CustomerUser[] = [];
+let memoryCurrentUser: CustomerUser | null = null;
 
 let hasAutoSeeded = false;
 
@@ -40,12 +44,68 @@ function setLocalData<T>(key: string, value: T): void {
   if (!isBrowser()) return;
   try {
     localStorage.setItem(key, JSON.stringify(value));
-    // Trigger global real-time event for immediate instant UI synchronization
     window.dispatchEvent(new Event('efootball_storage_update'));
     window.dispatchEvent(new CustomEvent('efootball_order_update', { detail: value }));
   } catch (err) {
     console.warn(`Failed writing to local storage for key ${key}:`, err);
   }
+}
+
+// -------------------------------------------------------------
+// CUSTOMER AUTH & AUTO-REGISTRATION
+// -------------------------------------------------------------
+export function getCurrentCustomer(): CustomerUser | null {
+  return getLocalData<CustomerUser | null>(STORAGE_KEYS.CURRENT_USER, memoryCurrentUser);
+}
+
+export function logoutCustomer(): void {
+  if (isBrowser()) {
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+    memoryCurrentUser = null;
+    window.dispatchEvent(new Event('efootball_storage_update'));
+  }
+}
+
+export async function registerOrLoginCustomer(
+  email: string,
+  password?: string,
+  phone?: string
+): Promise<CustomerUser> {
+  const cleanEmail = email.trim().toLowerCase();
+  const customers = getLocalData<CustomerUser[]>(STORAGE_KEYS.CUSTOMERS, memoryCustomers);
+  let customer = customers.find((c) => c.email.toLowerCase() === cleanEmail);
+
+  if (!customer) {
+    customer = {
+      id: `CUST-${Math.floor(1000 + Math.random() * 9000)}`,
+      email: cleanEmail,
+      phone: phone?.trim(),
+      createdAt: new Date().toISOString(),
+    };
+    customers.push(customer);
+    setLocalData(STORAGE_KEYS.CUSTOMERS, customers);
+    memoryCustomers = customers;
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('customers').insert({
+          id: customer.id,
+          email: customer.email,
+          phone: customer.phone,
+        });
+      } catch (e) {
+        console.warn('Supabase customer insert notice:', e);
+      }
+    }
+  } else if (phone && !customer.phone) {
+    customer.phone = phone.trim();
+    setLocalData(STORAGE_KEYS.CUSTOMERS, customers);
+  }
+
+  // Set as current logged in user
+  setLocalData(STORAGE_KEYS.CURRENT_USER, customer);
+  memoryCurrentUser = customer;
+  return customer;
 }
 
 // Automatically sync initial seed data to Supabase if tables exist but are empty
@@ -133,7 +193,6 @@ export async function getAccounts(): Promise<Account[]> {
           status: item.status,
           createdAt: item.created_at,
         }));
-        // Update local backup
         setLocalData(STORAGE_KEYS.ACCOUNTS, mapped);
         return mapped;
       }
@@ -157,7 +216,6 @@ export async function addAccount(account: Omit<Account, 'id' | 'createdAt'> & { 
     createdAt: new Date().toISOString(),
   };
 
-  // Immediate Local & Memory Storage (Zero data loss)
   const current = getLocalData<Account[]>(STORAGE_KEYS.ACCOUNTS, memoryAccounts);
   const updated = [newAccount, ...current];
   setLocalData(STORAGE_KEYS.ACCOUNTS, updated);
@@ -343,11 +401,12 @@ export async function deleteCoinPackage(id: string): Promise<boolean> {
 }
 
 // -------------------------------------------------------------
-// ORDERS & TRACKING (Zero data loss, instant real-time sync)
+// ORDERS & TRACKING
 // -------------------------------------------------------------
-export async function getOrders(): Promise<Order[]> {
+export async function getOrders(customerId?: string): Promise<Order[]> {
   const localOrders = getLocalData<Order[]>(STORAGE_KEYS.ORDERS, memoryOrders);
 
+  let allOrders = localOrders;
   if (isSupabaseConfigured && supabase) {
     try {
       const { data, error } = await supabase
@@ -363,6 +422,7 @@ export async function getOrders(): Promise<Order[]> {
           amount: Number(item.amount),
           customerPhone: item.customer_phone,
           customerEmail: item.customer_email,
+          customerId: item.customer_id,
           paymentSenderNumber: item.payment_sender_number,
           accountUid: item.account_uid,
           paymentProofUrl: item.payment_proof_url,
@@ -374,7 +434,6 @@ export async function getOrders(): Promise<Order[]> {
           updatedAt: item.updated_at,
         }));
         
-        // Merge seamlessly with local orders to ensure no unsynced local order is overwritten
         const mergedMap = new Map<string, Order>();
         mapped.forEach((o: Order) => mergedMap.set(o.id.toUpperCase(), o));
         localOrders.forEach((o: Order) => {
@@ -382,25 +441,26 @@ export async function getOrders(): Promise<Order[]> {
             mergedMap.set(o.id.toUpperCase(), o);
           }
         });
-        const mergedOrders = Array.from(mergedMap.values()).sort(
+        allOrders = Array.from(mergedMap.values()).sort(
           (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
-
-        setLocalData(STORAGE_KEYS.ORDERS, mergedOrders);
-        return mergedOrders;
+        setLocalData(STORAGE_KEYS.ORDERS, allOrders);
       }
     } catch (e) {
       console.warn('Supabase get orders error, using local orders:', e);
     }
   }
-  return localOrders;
+
+  if (customerId) {
+    return allOrders.filter((o) => o.customerId === customerId);
+  }
+  return allOrders;
 }
 
 export async function getOrderById(id: string): Promise<Order | null> {
   const cleanId = id.trim().toUpperCase();
   const normalizedId = cleanId.startsWith('EF-') ? cleanId : `EF-${cleanId}`;
 
-  // Check local first for instant responsive feel
   const localOrders = getLocalData<Order[]>(STORAGE_KEYS.ORDERS, memoryOrders);
   const foundLocal = localOrders.find(
     (ord) =>
@@ -425,6 +485,7 @@ export async function getOrderById(id: string): Promise<Order | null> {
           amount: Number(data.amount),
           customerPhone: data.customer_phone,
           customerEmail: data.customer_email,
+          customerId: data.customer_id,
           paymentSenderNumber: data.payment_sender_number,
           accountUid: data.account_uid,
           paymentProofUrl: data.payment_proof_url,
@@ -435,7 +496,6 @@ export async function getOrderById(id: string): Promise<Order | null> {
           createdAt: data.created_at,
           updatedAt: data.updated_at,
         };
-        // Update local copy immediately
         const idx = localOrders.findIndex((o) => o.id.toUpperCase() === orderObj.id.toUpperCase());
         if (idx !== -1) {
           localOrders[idx] = orderObj;
@@ -454,9 +514,24 @@ export async function getOrderById(id: string): Promise<Order | null> {
 }
 
 export async function createOrder(
-  orderInput: Omit<Order, 'id' | 'createdAt' | 'updatedAt' | 'status'>
+  orderInput: Omit<Order, 'id' | 'createdAt' | 'updatedAt' | 'status'> & { customerPassword?: string }
 ): Promise<Order> {
-  // Generate real unique readable order ID: e.g. EF-2481
+  let customerId = orderInput.customerId;
+
+  // Auto-register customer account if email is provided
+  if (orderInput.customerEmail) {
+    try {
+      const customer = await registerOrLoginCustomer(
+        orderInput.customerEmail,
+        orderInput.customerPassword,
+        orderInput.customerPhone
+      );
+      customerId = customer.id;
+    } catch (e) {
+      console.warn('Auto customer registration note:', e);
+    }
+  }
+
   const randNum = Math.floor(1000 + Math.random() * 9000);
   const id = `EF-${randNum}`;
   const now = new Date().toISOString();
@@ -468,7 +543,16 @@ export async function createOrder(
   };
 
   const newOrder: Order = {
-    ...orderInput,
+    productType: orderInput.productType,
+    productId: orderInput.productId,
+    productName: orderInput.productName,
+    amount: orderInput.amount,
+    customerPhone: orderInput.customerPhone,
+    customerEmail: orderInput.customerEmail,
+    customerId,
+    paymentSenderNumber: orderInput.paymentSenderNumber,
+    accountUid: orderInput.accountUid,
+    paymentProofUrl: orderInput.paymentProofUrl,
     id,
     status: 'PAYMENT_PENDING',
     deliveryStatus: 'Waxaa socota xaqiijinta rasiidka lacag-bixinta',
@@ -494,6 +578,7 @@ export async function createOrder(
         amount: newOrder.amount,
         customer_phone: newOrder.customerPhone,
         customer_email: newOrder.customerEmail,
+        customer_id: newOrder.customerId,
         payment_sender_number: newOrder.paymentSenderNumber,
         account_uid: newOrder.accountUid,
         payment_proof_url: newOrder.paymentProofUrl,
@@ -546,17 +631,14 @@ export async function updateOrderStatus(
     updatedAt: now,
   };
 
-  // Immediate local update + event broadcast for immediate instant client refresh
   current[index] = updatedOrder;
   setLocalData(STORAGE_KEYS.ORDERS, [...current]);
   memoryOrders = [...current];
 
-  // If status is completed and it's an account, mark account as SOLD
   if (status === 'COMPLETED' && updatedOrder.productType === 'ACCOUNT') {
     await updateAccount(updatedOrder.productId, { status: 'SOLD' });
   }
 
-  // Sync to Supabase
   if (isSupabaseConfigured && supabase) {
     try {
       const payload: any = {
