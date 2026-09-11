@@ -108,47 +108,63 @@ export async function registerOrLoginCustomer(
   return customer;
 }
 
+// Helper to prevent hanging Vercel serverless functions with a 2-second timeout
+function withTimeout<T = any>(promise: PromiseLike<T>, timeoutMs: number = 2000): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error('Supabase query timeout'));
+    }, timeoutMs);
+    Promise.resolve(promise)
+      .then((res) => {
+        clearTimeout(timer);
+        resolve(res);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
 // Automatically sync initial seed data to Supabase if tables exist but are empty
 async function autoSeedSupabaseIfEmpty() {
   if (!isSupabaseConfigured || !supabase || hasAutoSeeded) return;
   hasAutoSeeded = true;
   try {
-    const { data: accData, error: accErr } = await supabase.from('accounts').select('id').limit(1);
+    const { data: accData, error: accErr } = await withTimeout(supabase.from('accounts').select('id').limit(1));
     if (!accErr && (!accData || accData.length === 0)) {
-      for (const acc of INITIAL_ACCOUNTS) {
-        await supabase.from('accounts').insert({
-          id: acc.id,
-          title: acc.title,
-          team: acc.team,
-          rating: acc.rating,
-          price: acc.price,
-          star_players: acc.starPlayers,
-          special_cards: acc.specialCards,
-          coins_included: acc.coinsIncluded || 0,
-          gp_amount: acc.gpAmount,
-          division: acc.division,
-          description: acc.description,
-          images: acc.images,
-          status: acc.status,
-        });
-      }
+      const accInserts = INITIAL_ACCOUNTS.map((acc) => ({
+        id: acc.id,
+        title: acc.title,
+        team: acc.team,
+        rating: acc.rating,
+        price: acc.price,
+        star_players: acc.starPlayers,
+        special_cards: acc.specialCards,
+        coins_included: acc.coinsIncluded || 0,
+        gp_amount: acc.gpAmount,
+        division: acc.division,
+        description: acc.description,
+        images: acc.images,
+        status: acc.status,
+      }));
+      await supabase.from('accounts').insert(accInserts);
     }
 
-    const { data: coinData, error: coinErr } = await supabase.from('coin_packages').select('id').limit(1);
+    const { data: coinData, error: coinErr } = await withTimeout(supabase.from('coin_packages').select('id').limit(1));
     if (!coinErr && (!coinData || coinData.length === 0)) {
-      for (const pkg of INITIAL_COIN_PACKAGES) {
-        await supabase.from('coin_packages').insert({
-          id: pkg.id,
-          coins_amount: pkg.coinsAmount,
-          bonus_coins: pkg.bonusCoins || 0,
-          price: pkg.price,
-          badge: pkg.badge,
-          is_active: pkg.isActive,
-        });
-      }
+      const coinInserts = INITIAL_COIN_PACKAGES.map((pkg) => ({
+        id: pkg.id,
+        coins_amount: pkg.coinsAmount,
+        bonus_coins: pkg.bonusCoins || 0,
+        price: pkg.price,
+        badge: pkg.badge,
+        is_active: pkg.isActive,
+      }));
+      await supabase.from('coin_packages').insert(coinInserts);
     }
 
-    const { data: setData, error: setErr } = await supabase.from('store_settings').select('id').limit(1);
+    const { data: setData, error: setErr } = await withTimeout(supabase.from('store_settings').select('id').limit(1));
     if (!setErr && (!setData || setData.length === 0)) {
       await supabase.from('store_settings').insert({
         id: 'default',
@@ -159,7 +175,7 @@ async function autoSeedSupabaseIfEmpty() {
       });
     }
   } catch (e) {
-    console.log('Supabase auto-seed notice:', e);
+    console.warn('Supabase auto-seed notice (bypassed smoothly):', e);
   }
 }
 
@@ -170,12 +186,15 @@ export async function getAccounts(): Promise<Account[]> {
   const localAccounts = getLocalData<Account[]>(STORAGE_KEYS.ACCOUNTS, memoryAccounts);
   
   if (isSupabaseConfigured && supabase) {
-    await autoSeedSupabaseIfEmpty();
+    autoSeedSupabaseIfEmpty().catch(() => {});
     try {
-      const { data, error } = await supabase
-        .from('accounts')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const { data, error } = await withTimeout(
+        supabase
+          .from('accounts')
+          .select('*')
+          .order('created_at', { ascending: false }),
+        2500
+      );
       if (!error && data && data.length > 0) {
         const mapped = data.map((item: any) => ({
           id: item.id,
@@ -304,12 +323,15 @@ export async function getCoinPackages(): Promise<CoinPackage[]> {
   const localCoins = getLocalData<CoinPackage[]>(STORAGE_KEYS.COINS, memoryCoins);
 
   if (isSupabaseConfigured && supabase) {
-    await autoSeedSupabaseIfEmpty();
+    autoSeedSupabaseIfEmpty().catch(() => {});
     try {
-      const { data, error } = await supabase
-        .from('coin_packages')
-        .select('*')
-        .order('coins_amount', { ascending: true });
+      const { data, error } = await withTimeout(
+        supabase
+          .from('coin_packages')
+          .select('*')
+          .order('coins_amount', { ascending: true }),
+        2500
+      );
       if (!error && data && data.length > 0) {
         const mapped = data.map((item: any) => ({
           id: item.id,
@@ -409,10 +431,13 @@ export async function getOrders(customerId?: string): Promise<Order[]> {
   let allOrders = localOrders;
   if (isSupabaseConfigured && supabase) {
     try {
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const { data, error } = await withTimeout(
+        supabase
+          .from('orders')
+          .select('*')
+          .order('created_at', { ascending: false }),
+        2500
+      );
       if (!error && data && data.length > 0) {
         const mapped = data.map((item: any) => ({
           id: item.id,
@@ -664,13 +689,16 @@ export async function getStoreSettings(): Promise<StoreSettings> {
   const localSettings = getLocalData<StoreSettings>(STORAGE_KEYS.SETTINGS, memorySettings);
 
   if (isSupabaseConfigured && supabase) {
-    await autoSeedSupabaseIfEmpty();
+    autoSeedSupabaseIfEmpty().catch(() => {});
     try {
-      const { data, error } = await supabase
-        .from('store_settings')
-        .select('*')
-        .eq('id', 'default')
-        .single();
+      const { data, error } = await withTimeout(
+        supabase
+          .from('store_settings')
+          .select('*')
+          .eq('id', 'default')
+          .single(),
+        2000
+      );
       if (!error && data) {
         const mapped: StoreSettings = {
           evcNumber: data.evc_number,
