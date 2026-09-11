@@ -24,10 +24,22 @@ async function walkDir(currentDir, fileList = []) {
 }
 
 async function main() {
-  console.log('Initializing Git repository in', dir);
+  const token = process.argv[2] || process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+
+  if (!token) {
+    console.error('\n❌ ERROR: GitHub Personal Access Token is required to push to GitHub.');
+    console.error('Usage: node scripts/git-push.mjs <YOUR_GITHUB_TOKEN>\n');
+    console.error('To create a token in 30 seconds:');
+    console.error('1. Go to https://github.com/settings/tokens/new');
+    console.error('2. Give it a name, check "repo" scope, and click "Generate token"');
+    console.error('3. Provide the token (starts with ghp_...)\n');
+    process.exit(1);
+  }
+
+  console.log('🚀 Initializing Git repository in', dir);
   await git.init({ fs, dir, defaultBranch: 'main' });
 
-  console.log('Collecting files...');
+  console.log('📦 Staging project files...');
   const files = await walkDir(dir);
   console.log(`Found ${files.length} files to commit.`);
 
@@ -35,19 +47,19 @@ async function main() {
     await git.add({ fs, dir, filepath });
   }
 
-  console.log('Committing changes...');
+  console.log('✍️  Committing changes...');
   const sha = await git.commit({
     fs,
     dir,
     author: {
-      name: 'Asad Aweis',
+      name: 'asadaweis05-png',
       email: 'asadaweis05@gmail.com',
     },
     message: 'eFootball digital marketplace in Somali language with Supabase integration',
   });
-  console.log('Committed successfully. SHA:', sha);
+  console.log('✅ Committed successfully! SHA:', sha);
 
-  console.log('Setting remote origin...');
+  console.log('🔗 Setting remote origin to https://github.com/asadaweis05-png/gamers.git ...');
   try {
     await git.deleteRemote({ fs, dir, remote: 'origin' });
   } catch (e) {}
@@ -59,8 +71,7 @@ async function main() {
     url: 'https://github.com/asadaweis05-png/gamers.git',
   });
 
-  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
-  console.log('Pushing to https://github.com/asadaweis05-png/gamers.git ...');
+  console.log('🚀 Pushing to GitHub (main branch)...');
 
   try {
     const pushResult = await git.push({
@@ -70,18 +81,15 @@ async function main() {
       remote: 'origin',
       ref: 'main',
       force: true,
-      onAuth: () => {
-        if (token) {
-          return { username: token };
-        }
-        return { username: 'asadaweis05-png' };
-      },
+      onAuth: () => ({
+        username: token.trim(),
+      }),
     });
-    console.log('Push result:', pushResult);
-    console.log('Successfully pushed to GitHub!');
+    console.log('🎉 SUCCESS: Code has been pushed to https://github.com/asadaweis05-png/gamers.git !');
+    console.log('Push details:', pushResult);
   } catch (err) {
-    console.error('Push error:', err.message || err);
-    if (err.data) console.error('Error details:', err.data);
+    console.error('❌ Push failed:', err.message || err);
+    if (err.data) console.error('Details:', err.data);
     process.exit(1);
   }
 }
