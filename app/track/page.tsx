@@ -2,11 +2,11 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { getOrderById } from '@/lib/store';
-import { Order, OrderStatus } from '@/types';
+import { getOrderById, getOrders, getCurrentCustomer } from '@/lib/store';
+import { Order, OrderStatus, CustomerUser } from '@/types';
 import { 
   Search, CheckCircle2, ShieldAlert, 
-  Gamepad2, Coins, MessageCircle, Check, Clock, RefreshCw 
+  Gamepad2, Coins, MessageCircle, Check, Clock, RefreshCw, PackageCheck, User 
 } from 'lucide-react';
 
 function TrackOrderContent() {
@@ -15,6 +15,8 @@ function TrackOrderContent() {
 
   const [searchId, setSearchId] = useState(initialId);
   const [order, setOrder] = useState<Order | null>(null);
+  const [userOrders, setUserOrders] = useState<Order[]>([]);
+  const [currentUser, setCurrentUser] = useState<CustomerUser | null>(null);
   const [searched, setSearched] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -34,6 +36,7 @@ function TrackOrderContent() {
       const found = await getOrderById(targetId);
       if (found) {
         setOrder(found);
+        setSearchId(found.id);
         setErrorMsg('');
         setLastRefreshed(new Date().toLocaleTimeString());
       } else if (!silent) {
@@ -51,16 +54,62 @@ function TrackOrderContent() {
     }
   };
 
+  // Load customer orders automatically on mount
   useEffect(() => {
-    if (initialId) {
-      setSearchId(initialId);
-      handleSearch(initialId);
+    async function loadCustomerOrders() {
+      const cust = getCurrentCustomer();
+      setCurrentUser(cust);
+
+      const allOrders = await getOrders();
+      let myOrders: Order[] = [];
+
+      if (cust) {
+        const cleanEmail = cust.email.toLowerCase();
+        myOrders = allOrders.filter(
+          (o) =>
+            o.customerId === cust.id ||
+            (o.customerEmail && o.customerEmail.toLowerCase() === cleanEmail)
+        );
+      } else {
+        // Fallback: get all local orders if present
+        myOrders = allOrders;
+      }
+
+      setUserOrders(myOrders);
+
+      // If initialId was passed in query URL
+      if (initialId) {
+        setSearchId(initialId);
+        handleSearch(initialId);
+      } else if (myOrders.length > 0) {
+        // Automatically display the latest order!
+        const latest = myOrders[0];
+        setOrder(latest);
+        setSearchId(latest.id);
+        setLastRefreshed(new Date().toLocaleTimeString());
+      }
     }
+
+    loadCustomerOrders();
   }, [initialId]);
 
   // Real-time synchronization: listen to storage event and poll every 3 seconds for live updates
   useEffect(() => {
-    const handleStorageUpdate = () => {
+    const handleStorageUpdate = async () => {
+      const cust = getCurrentCustomer();
+      const allOrders = await getOrders();
+      if (cust) {
+        const cleanEmail = cust.email.toLowerCase();
+        const myOrders = allOrders.filter(
+          (o) =>
+            o.customerId === cust.id ||
+            (o.customerEmail && o.customerEmail.toLowerCase() === cleanEmail)
+        );
+        setUserOrders(myOrders);
+      } else {
+        setUserOrders(allOrders);
+      }
+
       if (searchId.trim()) {
         handleSearch(searchId.trim(), true);
       }
@@ -137,6 +186,53 @@ function TrackOrderContent() {
           Geli lambarkaaga gaarka ah ee dalabka (tusaale <strong className="text-slate-200">EF-1042</strong>) si aad u aragto halka uu marayo.
         </p>
       </div>
+
+      {/* Quick Selection for Logged-In / Existing Orders */}
+      {userOrders.length > 0 && (
+        <div className="bg-[#0f141f] border border-cyan-500/30 rounded-3xl p-4 sm:p-5 mb-6 shadow-xl">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2 text-xs font-bold text-cyan-300">
+              <PackageCheck className="w-4 h-4 text-cyan-400" />
+              <span>Dalabyadaada ({userOrders.length})</span>
+            </div>
+            {currentUser && (
+              <span className="text-[11px] text-slate-400 font-mono">
+                👤 {currentUser.email}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+            {userOrders.map((ord) => {
+              const isSelected = order?.id === ord.id;
+              return (
+                <button
+                  key={ord.id}
+                  type="button"
+                  onClick={() => {
+                    setOrder(ord);
+                    setSearchId(ord.id);
+                    setErrorMsg('');
+                  }}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all whitespace-nowrap cursor-pointer shrink-0 border ${
+                    isSelected
+                      ? 'bg-cyan-500 text-black border-cyan-400 shadow-md shadow-cyan-500/20'
+                      : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-cyan-500/50'
+                  }`}
+                >
+                  <span>#{ord.id}</span>
+                  <span className={`text-[10px] font-sans px-1.5 py-0.2 rounded ${
+                    ord.status === 'COMPLETED'
+                      ? 'bg-emerald-950 text-emerald-300'
+                      : 'bg-amber-950 text-amber-300'
+                  }`}>
+                    ${ord.amount}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Search Bar Form */}
       <div className="bg-[#0f141f] border border-slate-800 rounded-3xl p-4 sm:p-6 mb-8 shadow-2xl">

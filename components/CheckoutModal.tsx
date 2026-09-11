@@ -2,11 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Account, CoinPackage, ProductType } from '@/types';
+import { Account, CoinPackage, ProductType, CustomerUser } from '@/types';
 import { createOrder, getStoreSettings, getCurrentCustomer } from '@/lib/store';
 import { 
   X, CheckCircle2, Copy, Check, UploadCloud, AlertCircle, 
-  Gamepad2, Coins, ArrowRight, ShieldCheck, MessageCircle, Lock, KeyRound 
+  Gamepad2, Coins, ArrowRight, ShieldCheck, MessageCircle, Lock, KeyRound, UserCheck 
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -42,6 +42,9 @@ export default function CheckoutModal({
   const [copied, setCopied] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState<string>('');
 
+  // Existing logged-in customer state
+  const [existingCustomer, setExistingCustomer] = useState<CustomerUser | null>(null);
+
   // Live Store EVC payment settings
   const [evcNumber, setEvcNumber] = useState('061-888-9900');
   const [magacaNumberka, setMagacaNumberka] = useState('Maxamed Cali (eFootball Pro)');
@@ -54,11 +57,16 @@ export default function CheckoutModal({
 
       const loggedCustomer = getCurrentCustomer();
       if (loggedCustomer) {
+        setExistingCustomer(loggedCustomer);
         setEmail(loggedCustomer.email);
         if (loggedCustomer.phone) setWhatsapp(loggedCustomer.phone);
+      } else {
+        setExistingCustomer(null);
       }
     }
-    loadSettings();
+    if (isOpen) {
+      loadSettings();
+    }
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -76,13 +84,18 @@ export default function CheckoutModal({
       return;
     }
 
-    if (!whatsapp.trim() && !email.trim()) {
+    if (!existingCustomer && !whatsapp.trim() && !email.trim()) {
       setErrorMsg('Fadlan geli ugu yaraan hal hab xiriir: WhatsApp ama Email.');
       return;
     }
 
-    if (email.trim() && !password.trim()) {
+    if (!existingCustomer && email.trim() && !password.trim()) {
       setErrorMsg('Fadlan geli password si laguugu furo account dukaanka ah.');
+      return;
+    }
+
+    if (!existingCustomer && !email.trim()) {
+      setErrorMsg('Fadlan geli email-kaaga si laguugu furo account dukaanka ah.');
       return;
     }
 
@@ -290,47 +303,71 @@ export default function CheckoutModal({
                 </div>
               )}
 
-              {/* Email & Password Registration Container */}
-              <div className="bg-[#101726] border border-cyan-500/30 rounded-2xl p-3.5 sm:p-4 space-y-3">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-cyan-300">
-                  <KeyRound className="w-4 h-4 text-cyan-400" />
-                  <span>Account-ka Dukaanka (Si aad ula socoto dalabyadaada)</span>
+              {/* Account section: For returning customers show verified badge, for new users show registration inputs */}
+              {existingCustomer ? (
+                <div className="bg-[#101726] border border-emerald-500/40 rounded-2xl p-3.5 sm:p-4 flex items-center justify-between gap-3 shadow-md">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                      <UserCheck className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-white">Account-kaaga Waa Diyaar</span>
+                        <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-950 text-emerald-300 border border-emerald-800/80 px-2 py-0.2 rounded-full">
+                          KUGU JIRA
+                        </span>
+                      </div>
+                      <span className="text-xs font-mono text-cyan-300 block truncate max-w-[220px] sm:max-w-xs">
+                        {existingCustomer.email}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-mono shrink-0">
+                    ID: #{existingCustomer.id}
+                  </span>
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
-                      Email Address <span className="text-red-400">*</span>
-                    </label>
-                    <input
-                      type="email"
-                      placeholder="magacaaga@gmail.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
-                      required
-                    />
+              ) : (
+                <div className="bg-[#101726] border border-cyan-500/30 rounded-2xl p-3.5 sm:p-4 space-y-3">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-cyan-300">
+                    <KeyRound className="w-4 h-4 text-cyan-400" />
+                    <span>Account Cusub (Kaliya marka ugu horreysa)</span>
                   </div>
 
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
-                      Password Cusub <span className="text-red-400">*</span>
-                    </label>
-                    <input
-                      type="password"
-                      placeholder="Geli Password aad xusuusan karto"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
-                      required
-                    />
-                  </div>
-                </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                        Email Address <span className="text-red-400">*</span>
+                      </label>
+                      <input
+                        type="email"
+                        placeholder="magacaaga@gmail.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                        required
+                      />
+                    </div>
 
-                <p className="text-[10px] text-slate-400">
-                  🔐 Waxaa si toos ah laguugu furayaa account aad mar kasta ku arki karto dalabyadaadii hore.
-                </p>
-              </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                        Password Cusub <span className="text-red-400">*</span>
+                      </label>
+                      <input
+                        type="password"
+                        placeholder="Geli Password aad xusuusan karto"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] text-slate-400">
+                    🔐 Waxaa si toos ah laguugu furayaa account aad mar dambe adigoon password gelin wax kasta ku iibsan karto.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
