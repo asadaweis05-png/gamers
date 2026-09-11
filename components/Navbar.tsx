@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Trophy, Coins, Gamepad2, Search, ShieldCheck, User, LogOut, Lock, X } from 'lucide-react';
+import { Trophy, Coins, Gamepad2, Search, User, LogOut, Lock, X } from 'lucide-react';
 import { getCurrentCustomer, logoutCustomer, registerOrLoginCustomer } from '@/lib/store';
 import { CustomerUser } from '@/types';
 
@@ -43,7 +43,6 @@ export default function Navbar() {
     { href: '/accounts', label: 'Iibso Account', icon: Gamepad2 },
     { href: '/coins', label: 'Iibso Coins', icon: Coins },
     { href: '/track', label: 'La Soco Dalabka', icon: Search },
-    { href: '/admin', label: 'Maamulka', icon: ShieldCheck },
   ];
 
   return (

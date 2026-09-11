@@ -107,7 +107,7 @@ function TrackOrderContent() {
       case 'COMPLETED':
         return {
           label: '🟢 Dalabka Waa La Dhameystiray 🎉',
-          sub: 'Dalabkaagii si buuxda ayaa laguu soo gaarsiiyey WhatsApp ama Email.',
+          sub: 'Dalabkaagii waa la dhameeyey! Faahfaahinta waxaad ka arki kartaa qoraalka hoose.',
           color: 'text-emerald-300 bg-emerald-950/60 border-emerald-500/50',
           step: 3,
         };
@@ -268,9 +268,30 @@ function TrackOrderContent() {
               {order.deliveryStatus || getStatusBadge(order.status).sub}
             </p>
             {order.status === 'COMPLETED' && (
-              <div className="mt-3 p-3 bg-emerald-950/60 border border-emerald-500/40 rounded-xl text-xs text-emerald-300 font-bold flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Dalabkaagii waa la dhameeyey! Fadlan hubi WhatsApp-kaaga ama Email-kaaga si aad u hesho xogta buuxda.</span>
+              <div className="mt-4 space-y-3">
+                {/* Admin Notes — Account Details */}
+                {order.adminNotes && (
+                  <div className="p-4 bg-emerald-950/60 border-2 border-emerald-500/50 rounded-2xl shadow-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                      <span className="text-sm font-black text-emerald-300 uppercase tracking-wider">
+                        📦 Faahfaahinta Dalabkaaga
+                      </span>
+                    </div>
+                    <pre className="text-sm text-white font-mono whitespace-pre-wrap bg-black/40 p-3 rounded-xl border border-emerald-800/50 leading-relaxed">
+                      {order.adminNotes}
+                    </pre>
+                    <p className="text-[11px] text-emerald-300/70 mt-2">
+                      ℹ️ Xogtan waxaa qoray maamulka dukaanka. Fadlan keydi oo hubi in aad si fiican u kaydisay.
+                    </p>
+                  </div>
+                )}
+
+                {/* Generic completed message (shown always) */}
+                <div className="p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 font-bold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Dalabkaagii waa la dhameeyey! {!order.adminNotes ? 'Fadlan hubi WhatsApp-kaaga ama Email-kaaga si aad u hesho xogta buuxda.' : 'Xogta waa ka muuqataa kor.'}</span>
+                </div>
               </div>
             )}
           </div>

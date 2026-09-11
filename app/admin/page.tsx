@@ -6,18 +6,23 @@ import {
   updateOrderStatus, addAccount, updateAccount, deleteAccount,
   addCoinPackage, updateCoinPackage, deleteCoinPackage, updateStoreSettings
 } from '@/lib/store';
+import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { Order, Account, CoinPackage, StoreSettings, OrderStatus } from '@/types';
 import { 
   ShieldCheck, Gamepad2, Coins, Search, Eye, CheckCircle2, 
-  Plus, Edit2, Trash2, Settings, Lock, 
+  Plus, Edit2, Trash2, Settings, Lock, Mail,
   MessageCircle, RefreshCw, X, Save
 } from 'lucide-react';
+
+const ADMIN_EMAIL = 'asadaweis082@gmail.com';
 
 export default function AdminDashboardPage() {
   // Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [adminPin, setAdminPin] = useState('');
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
   const [authError, setAuthError] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
 
   // Active Tab: 'ORDERS' | 'ACCOUNTS' | 'COINS' | 'SETTINGS'
   const [activeTab, setActiveTab] = useState<'ORDERS' | 'ACCOUNTS' | 'COINS' | 'SETTINGS'>('ORDERS');
@@ -76,11 +81,24 @@ export default function AdminDashboardPage() {
   const [settingsSuccess, setSettingsSuccess] = useState(false);
 
   useEffect(() => {
-    // Check local session
-    if (sessionStorage.getItem('efootball_admin_auth') === 'true') {
-      setIsAuthenticated(true);
-      fetchAdminData();
+    // Check existing Supabase session
+    async function checkSession() {
+      if (!isSupabaseConfigured || !supabase) {
+        // Fallback: check sessionStorage
+        if (sessionStorage.getItem('efootball_admin_auth') === 'true') {
+          setIsAuthenticated(true);
+          fetchAdminData();
+        }
+        return;
+      }
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session && session.user.email?.toLowerCase() === ADMIN_EMAIL) {
+        setIsAuthenticated(true);
+        sessionStorage.setItem('efootball_admin_auth', 'true');
+        fetchAdminData();
+      }
     }
+    checkSession();
   }, []);
 
   async function fetchAdminData() {
@@ -96,18 +114,71 @@ export default function AdminDashboardPage() {
     setSettings(set);
   }
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (adminPin === 'admin123' || adminPin === 'efootball2025') {
-      setIsAuthenticated(true);
-      sessionStorage.setItem('efootball_admin_auth', 'true');
-      fetchAdminData();
-    } else {
-      setAuthError('Furaha Sirta ah waa khalad (Furaha demo-ga: admin123)');
+    setAuthError('');
+    setAuthLoading(true);
+
+    const email = adminEmail.trim().toLowerCase();
+
+    // Check if this email is allowed
+    if (email !== ADMIN_EMAIL) {
+      setAuthError('Email-kan lama ogola inuu galo bogga maamulka. Kaliya admin-ka ayaa gali kara.');
+      setAuthLoading(false);
+      return;
+    }
+
+    if (!isSupabaseConfigured || !supabase) {
+      // Fallback for local dev without Supabase
+      setAuthError('Supabase laguma xirin. Fadlan hubi inaad Supabase si sax ah u habeysay.');
+      setAuthLoading(false);
+      return;
+    }
+
+    try {
+      // Try to sign in
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password: adminPassword,
+      });
+
+      if (error) {
+        // If user doesn't exist, sign up first
+        if (error.message.includes('Invalid login credentials')) {
+          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+            email,
+            password: adminPassword,
+          });
+          if (signUpError) {
+            setAuthError(`Khalad: ${signUpError.message}`);
+            setAuthLoading(false);
+            return;
+          }
+          // Signed up successfully
+          setIsAuthenticated(true);
+          sessionStorage.setItem('efootball_admin_auth', 'true');
+          fetchAdminData();
+        } else {
+          setAuthError(`Khalad: ${error.message}`);
+          setAuthLoading(false);
+          return;
+        }
+      } else if (data.session) {
+        setIsAuthenticated(true);
+        sessionStorage.setItem('efootball_admin_auth', 'true');
+        fetchAdminData();
+      }
+    } catch (err: any) {
+      setAuthError('Khalad aan la fileyn ayaa dhacay. Fadlan isku day mar kale.');
+    } finally {
+      setAuthLoading(false);
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (isSupabaseConfigured && supabase) {
+      await supabase.auth.signOut();
+    }
     setIsAuthenticated(false);
     sessionStorage.removeItem('efootball_admin_auth');
   };
@@ -239,7 +310,7 @@ export default function AdminDashboardPage() {
             Bogga Maamulka (Admin)
           </h2>
           <p className="text-xs text-slate-400 text-center mb-6">
-            Geli furaha sirta ah si aad u maamusho dalabyada, accounts-ka, iyo rasiidadaha lacag-bixinta.
+            Geli email-kaaga iyo password-kaaga si aad u maamusho dalabyada, accounts-ka, iyo rasiidadaha lacag-bixinta.
           </p>
 
           {authError && (
@@ -251,31 +322,55 @@ export default function AdminDashboardPage() {
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-                Furaha Sirta ah ee Admin-ka
+                Email Address (Admin Only)
               </label>
-              <input
-                type="password"
-                placeholder="Geli furaha sirta (demo: admin123)"
-                value={adminPin}
-                onChange={(e) => {
-                  setAdminPin(e.target.value);
-                  setAuthError('');
-                }}
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
-                required
-              />
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input
+                  type="email"
+                  placeholder="admin@example.com"
+                  value={adminEmail}
+                  onChange={(e) => {
+                    setAdminEmail(e.target.value);
+                    setAuthError('');
+                  }}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
+                Password
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={adminPassword}
+                  onChange={(e) => {
+                    setAdminPassword(e.target.value);
+                    setAuthError('');
+                  }}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                  required
+                />
+              </div>
             </div>
 
             <button
               type="submit"
-              className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-black text-xs sm:text-sm uppercase tracking-wider shadow-lg shadow-cyan-500/25 transition-all cursor-pointer"
+              disabled={authLoading}
+              className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-black text-xs sm:text-sm uppercase tracking-wider shadow-lg shadow-cyan-500/25 transition-all cursor-pointer disabled:opacity-50"
             >
-              GAL BOGGA MAAMULKA
+              {authLoading ? 'WAA LA HUBINAYAA...' : 'GAL BOGGA MAAMULKA'}
             </button>
           </form>
 
-          <div className="mt-6 text-center text-[11px] text-slate-400">
-            Furaha Demo-ga: <code className="text-cyan-400 bg-slate-900 px-1.5 py-0.5 rounded">admin123</code>
+          <div className="mt-6 text-center text-[11px] text-slate-500">
+            🔒 Boggan waxaa kaliya geli kara admin-ka dukaanka
           </div>
         </div>
       </div>
@@ -894,20 +989,25 @@ export default function AdminDashboardPage() {
               </button>
             </div>
 
-            <p className="text-xs text-slate-300 mb-4">
+            <p className="text-xs text-slate-300 mb-2">
               Qor faahfaahinta gaarsiinta dalabka #{editingOrder.id} ({editingOrder.productName}):
             </p>
 
+            <div className="mb-3 p-3 bg-amber-950/40 border border-amber-800/60 rounded-xl text-[11px] text-amber-200">
+              <strong className="block mb-1">⚠️ Muhiim:</strong>
+              Qoraalkan waxaa macmiilku ka arki doonaa bogga &quot;La Soco Dalabka&quot; markuu dalabkiisa hubi doono. Halkan ku qor xogta account-ka ama wixii macmiilku u baahan yahay (tusaale: Email, Password, Konami ID, iwm).
+            </div>
+
             <div className="space-y-3 mb-5">
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
-                Qoraalka Gaarsiinta (Macmiilka ayaa u muuqanaya)
+              <label className="block text-xs font-bold text-emerald-400 uppercase tracking-wider">
+                📝 Qoraalka Faahfaahinta (Macmiilka ayaa u muuqanaya)
               </label>
               <textarea
-                rows={3}
+                rows={5}
                 value={deliveryNoteInput}
                 onChange={(e) => setDeliveryNoteInput(e.target.value)}
-                placeholder="Tusaale: Xogta account-ka waxaa loogu diray WhatsApp / Coins-kii waa la shubay"
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400"
+                placeholder={"Tusaale: Xogta Account-ka\n\nEmail: player123@gmail.com\nPassword: MySecurePass456\nKonami ID: 1234567890\n\nKu raaxayso ciyaarta! 🎮"}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400 font-mono leading-relaxed"
               />
             </div>
 
@@ -915,7 +1015,7 @@ export default function AdminDashboardPage() {
               <button
                 type="button"
                 onClick={() => setEditingOrder(null)}
-                className="flex-1 py-3 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold"
+                className="flex-1 py-3 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold cursor-pointer"
               >
                 Ka Noqo
               </button>
@@ -924,7 +1024,7 @@ export default function AdminDashboardPage() {
                 onClick={() => handleUpdateStatus(editingOrder.id, 'COMPLETED', deliveryNoteInput)}
                 className="flex-1 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs uppercase cursor-pointer"
               >
-                Xaqiiji Dhameystirka
+                ✅ Xaqiiji Dhameystirka
               </button>
             </div>
           </div>

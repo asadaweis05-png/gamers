@@ -606,7 +606,7 @@ export async function updateOrderStatus(
 
   const defaultNote =
     status === 'COMPLETED'
-      ? 'Dalabkaagii si buuxda ayaa laguu soo gaarsiiyey WhatsApp ama Email.'
+      ? 'Dalabkaagii waa la dhameeyey! Faahfaahinta waxaad ka arki kartaa bogga La Soco Dalabka.'
       : status === 'PROCESSING'
       ? 'Dalabkaagii waxaa ku socota diyaarinta iyo ku shubista tooska ah.'
       : status === 'PAYMENT_VERIFIED'

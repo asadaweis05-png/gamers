@@ -494,6 +494,7 @@ export default function CheckoutModal({
                 </div>
               </div>
 
+
               {/* Actions */}
               <div className="space-y-2 pt-2">
                 <button
